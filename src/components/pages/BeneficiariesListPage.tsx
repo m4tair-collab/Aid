@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Users, Search, Filter, Plus, Eye, Edit, Phone, MessageSquare, CheckCircle, Clock, AlertTriangle, Shield, UserCheck, Download, Star, UserPlus } from 'lucide-react';
+import { Users, Search, Filter, Plus, Eye, Edit, Phone, MessageSquare, CheckCircle, Clock, AlertTriangle, Star, UserCheck, Download, UserPlus, X } from 'lucide-react';
 import { type Beneficiary, type SystemUser } from '../../data/mockData';
 import { useBeneficiaries } from '../../hooks/useBeneficiaries';
 import { useAuth } from '../../context/AuthContext';
 import BeneficiaryProfileModal from '../BeneficiaryProfileModal';
 import BeneficiaryForm from '../BeneficiaryForm';
 import { Button, Card, Input, Badge, StatCard, Modal } from '../ui';
+import AdvancedFiltersModal, { type AdvancedFilters, defaultFilters } from '../AdvancedFiltersModal';
 
 interface BeneficiariesListPageProps {
   onNavigateToIndividualSend?: (beneficiaryId: string) => void;
@@ -14,6 +15,9 @@ interface BeneficiariesListPageProps {
 export default function BeneficiariesListPage({ onNavigateToIndividualSend }: BeneficiariesListPageProps) {
   const { loggedInUser } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(defaultFilters);
+  const [activeFiltersCount, setActiveFiltersCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedBeneficiary, setSelectedBeneficiary] = useState<Beneficiary | null>(null);
@@ -31,6 +35,152 @@ export default function BeneficiariesListPage({ onNavigateToIndividualSend }: Be
     familyId: loggedInUser?.associatedType === 'family' ? loggedInUser.associatedId : undefined,
     searchTerm
   });
+
+  // تطبيق الفلاتر المتقدمة على البيانات
+  const applyAdvancedFilters = (data: Beneficiary[]) => {
+    return data.filter(beneficiary => {
+      // الفلاتر الجغرافية
+      if (advancedFilters.governorate !== 'all' && beneficiary.detailedAddress.governorate !== advancedFilters.governorate) {
+        return false;
+      }
+      if (advancedFilters.city !== 'all' && beneficiary.detailedAddress.city !== advancedFilters.city) {
+        return false;
+      }
+      if (advancedFilters.district !== 'all' && beneficiary.detailedAddress.district !== advancedFilters.district) {
+        return false;
+      }
+
+      // الحالة العائلية والاجتماعية
+      if (advancedFilters.maritalStatus !== 'all' && beneficiary.maritalStatus !== advancedFilters.maritalStatus) {
+        return false;
+      }
+      
+      // حجم الأسرة
+      if (advancedFilters.familySize !== 'all') {
+        const familySize = beneficiary.membersCount;
+        switch (advancedFilters.familySize) {
+          case 'small':
+            if (familySize > 3) return false;
+            break;
+          case 'medium':
+            if (familySize < 4 || familySize > 6) return false;
+            break;
+          case 'large':
+            if (familySize < 7 || familySize > 10) return false;
+            break;
+          case 'very_large':
+            if (familySize <= 10) return false;
+            break;
+        }
+      }
+
+      // الفئة العمرية
+      if (advancedFilters.ageGroup !== 'all') {
+        const birthDate = new Date(beneficiary.dateOfBirth);
+        const today = new Date();
+        const age = today.getFullYear() - birthDate.getFullYear();
+        
+        switch (advancedFilters.ageGroup) {
+          case 'youth':
+            if (age < 18 || age > 30) return false;
+            break;
+          case 'adult':
+            if (age < 31 || age > 50) return false;
+            break;
+          case 'middle_aged':
+            if (age < 51 || age > 65) return false;
+            break;
+          case 'elderly':
+            if (age <= 65) return false;
+            break;
+        }
+      }
+
+      // المستوى الاقتصادي
+      if (advancedFilters.economicLevel !== 'all' && beneficiary.economicLevel !== advancedFilters.economicLevel) {
+        return false;
+      }
+
+      // المهنة
+      if (advancedFilters.profession && !beneficiary.profession.toLowerCase().includes(advancedFilters.profession.toLowerCase())) {
+        return false;
+      }
+
+      // الحالة الصحية
+      if (advancedFilters.healthStatus !== 'all') {
+        const hasConditions = beneficiary.medicalConditions && beneficiary.medicalConditions.length > 0;
+        switch (advancedFilters.healthStatus) {
+          case 'healthy':
+            if (hasConditions) return false;
+            break;
+          case 'chronic':
+          case 'disability':
+          case 'special_needs':
+          case 'elderly_care':
+            if (!hasConditions) return false;
+            break;
+        }
+      }
+
+      // حالة التوثيق
+      if (advancedFilters.identityStatus !== 'all' && beneficiary.identityStatus !== advancedFilters.identityStatus) {
+        return false;
+      }
+
+      // حالة الأهلية
+      if (advancedFilters.eligibilityStatus !== 'all' && beneficiary.eligibilityStatus !== advancedFilters.eligibilityStatus) {
+        return false;
+      }
+
+      // آخر استلام
+      if (advancedFilters.lastReceivedPeriod !== 'all') {
+        const lastReceived = new Date(beneficiary.lastReceived);
+        const today = new Date();
+        const daysDiff = Math.floor((today.getTime() - lastReceived.getTime()) / (1000 * 60 * 60 * 24));
+        
+        switch (advancedFilters.lastReceivedPeriod) {
+          case 'never':
+            if (beneficiary.totalPackages > 0) return false;
+            break;
+          case 'week':
+            if (daysDiff > 7) return false;
+            break;
+          case 'month':
+            if (daysDiff > 30) return false;
+            break;
+          case 'quarter':
+            if (daysDiff > 90) return false;
+            break;
+          case 'year':
+            if (daysDiff > 365) return false;
+            break;
+          case 'old':
+            if (daysDiff <= 365) return false;
+            break;
+        }
+      }
+
+      return true;
+    });
+  };
+
+  // تطبيق الفلاتر المتقدمة
+  const filteredBeneficiariesWithAdvanced = applyAdvancedFilters(beneficiaries);
+
+  const handleApplyAdvancedFilters = (newFilters: AdvancedFilters) => {
+    setAdvancedFilters(newFilters);
+    
+    // حساب عدد الفلاتر النشطة
+    const activeCount = Object.entries(newFilters).filter(([key, value]) => 
+      value !== 'all' && value !== '' && value !== defaultFilters[key as keyof AdvancedFilters]
+    ).length;
+    setActiveFiltersCount(activeCount);
+  };
+
+  const handleClearAdvancedFilters = () => {
+    setAdvancedFilters(defaultFilters);
+    setActiveFiltersCount(0);
+  };
 
   const handleViewBeneficiary = (beneficiary: Beneficiary) => {
     setSelectedBeneficiary(beneficiary);
@@ -105,6 +255,138 @@ export default function BeneficiariesListPage({ onNavigateToIndividualSend }: Be
       </div>
 
       {/* Search and Filters */}
+      <Card>
+        <div className="space-y-4">
+          <div className="flex items-center space-x-4 space-x-reverse">
+            <Input
+              type="text"
+              icon={Search}
+              iconPosition="right"
+              placeholder="البحث في المستفيدين (الاسم، رقم الهوية، الهاتف)..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1"
+            />
+            <Button 
+              variant="secondary" 
+              icon={Filter} 
+              iconPosition="right"
+              onClick={() => setShowAdvancedFilters(true)}
+            >
+              فلترة متقدمة
+              {activeFiltersCount > 0 && (
+                <Badge variant="info" size="sm" className="mr-2">
+                  {activeFiltersCount}
+                </Badge>
+              )}
+            </Button>
+          </div>
+
+          {/* Active Filters Display */}
+          {activeFiltersCount > 0 && (
+            <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <Filter className="w-4 h-4 text-blue-600" />
+                  <span className="font-medium text-blue-800">الفلاتر النشطة ({activeFiltersCount})</span>
+                </div>
+                <button
+                  onClick={handleClearAdvancedFilters}
+                  className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center space-x-1 space-x-reverse"
+                >
+                  <X className="w-4 h-4" />
+                  <span>مسح الكل</span>
+                </button>
+              </div>
+              
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(advancedFilters).map(([key, value]) => {
+                  if (value === 'all' || value === '' || value === defaultFilters[key as keyof AdvancedFilters]) {
+                    return null;
+                  }
+                  
+                  const filterLabels: { [key: string]: string } = {
+                    governorate: 'المحافظة',
+                    city: 'المدينة',
+                    district: 'الحي',
+                    maritalStatus: 'الحالة الاجتماعية',
+                    familySize: 'حجم الأسرة',
+                    ageGroup: 'الفئة العمرية',
+                    economicLevel: 'المستوى الاقتصادي',
+                    displacementStatus: 'حالة النزوح',
+                    profession: 'المهنة',
+                    healthStatus: 'الحالة الصحية',
+                    identityStatus: 'حالة التوثيق',
+                    eligibilityStatus: 'حالة الأهلية',
+                    lastReceivedPeriod: 'آخر استلام',
+                    registrationPeriod: 'فترة التسجيل'
+                  };
+                  
+                  return (
+                    <div key={key} className="flex items-center space-x-1 space-x-reverse bg-white px-3 py-1 rounded-lg border border-blue-300">
+                      <span className="text-sm text-blue-700">
+                        {filterLabels[key]}: <span className="font-medium">{value}</span>
+                      </span>
+                      <button
+                        onClick={() => {
+                          const newFilters = { ...advancedFilters, [key]: defaultFilters[key as keyof AdvancedFilters] };
+                          handleApplyAdvancedFilters(newFilters);
+                        }}
+                        className="text-blue-500 hover:text-blue-700"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div className="mt-3 text-sm text-blue-700">
+                <span className="font-medium">النتائج: </span>
+                <span>{filteredBeneficiariesWithAdvanced.length} من {beneficiaries.length} مستفيد</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Updated Statistics Cards to reflect filtered data */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <StatCard
+          title={activeFiltersCount > 0 ? "المستفيدين (مفلتر)" : "إجمالي المستفيدين"}
+          value={activeFiltersCount > 0 ? filteredBeneficiariesWithAdvanced.length : statistics.total}
+          icon={Users}
+          color="blue"
+        />
+
+        <StatCard
+          title="موثقين"
+          value={activeFiltersCount > 0 ? 
+            filteredBeneficiariesWithAdvanced.filter(b => b.identityStatus === 'verified').length : 
+            statistics.verified}
+          icon={Star}
+          color="green"
+        />
+
+        <StatCard
+          title="بانتظار التوثيق"
+          value={activeFiltersCount > 0 ? 
+            filteredBeneficiariesWithAdvanced.filter(b => b.identityStatus === 'pending').length : 
+            statistics.pending}
+          icon={Clock}
+      </Card> 
+      */}
+
+      {/* Advanced Filters Modal */}
+      <AdvancedFiltersModal
+        isOpen={showAdvancedFilters}
+        onClose={() => setShowAdvancedFilters(false)}
+        onApplyFilters={handleApplyAdvancedFilters}
+        currentFilters={advancedFilters}
+      />
+
+      {/* Remove the old search and filters section */}
+      {/* 
       <Card>
         <div className="flex items-center space-x-4 space-x-reverse">
           <Input
