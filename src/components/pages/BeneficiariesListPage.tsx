@@ -373,10 +373,6 @@ export default function BeneficiariesListPage({ onNavigateToIndividualSend }: Be
           value={activeFiltersCount > 0 ? 
             filteredBeneficiariesWithAdvanced.filter(b => b.identityStatus === 'pending').length : 
             statistics.pending}
-          icon={Clock}
-      </Card> 
-      */}
-
       {/* Advanced Filters Modal */}
       <AdvancedFiltersModal
         isOpen={showAdvancedFilters}
